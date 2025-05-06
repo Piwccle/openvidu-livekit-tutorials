@@ -1,4 +1,4 @@
-import {
+/*import {
   S3Client,
   GetObjectCommand,
   DeleteObjectCommand,
@@ -90,4 +90,4 @@ export class S3Service {
   async run(command) {
     return this.s3Client.send(command);
   }
-}
+}*/

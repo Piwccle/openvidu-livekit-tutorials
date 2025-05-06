@@ -10,7 +10,7 @@ import {
   EncodedFileType,
   WebhookReceiver,
 } from "livekit-server-sdk";
-import { S3Service } from "./s3.service.js";
+import { AzureBlobService } from "./azure.blobstorage.js";
 
 // Configuration
 const SERVER_PORT = process.env.SERVER_PORT || 6080;
@@ -36,7 +36,7 @@ const egressClient = new EgressClient(
   LIVEKIT_API_KEY,
   LIVEKIT_API_SECRET
 );
-const s3Service = new S3Service();
+const azureBlobService = new AzureBlobService();
 const webhookReceiver = new WebhookReceiver(
   LIVEKIT_API_KEY,
   LIVEKIT_API_SECRET
@@ -97,7 +97,7 @@ app.post("/recordings/start", async (req, res) => {
   // The room name, time and room ID in the file path help to organize the recordings
   const fileOutput = new EncodedFileOutput({
     fileType: EncodedFileType.MP4,
-    filepath: `${RECORDINGS_PATH}/{room_name}-{time}-{room_id}`,
+    filepath: `RoomComposite-{room_name}-{time}-{room_id}`,
     disableManifest: true,
   });
 
@@ -152,7 +152,7 @@ app.post("/recordings/stop", async (req, res) => {
 app.get("/recordings", async (req, res) => {
   const roomId = req.query.roomId?.toString();
   try {
-    const awsResponse = await s3Service.listObjects(RECORDINGS_PATH);
+    const awsResponse = await azureBlobService.listObjects(RECORDINGS_PATH);
     let recordings = [];
     if (awsResponse.Contents) {
       recordings = awsResponse.Contents.map((recording) => {
@@ -177,7 +177,7 @@ app.get("/recordings/:recordingName", async (req, res) => {
   const { recordingName } = req.params;
   const { range } = req.headers;
   const key = RECORDINGS_PATH + recordingName;
-  const exists = await s3Service.exists(key);
+  const exists = await azureBlobService.exists(key);
 
   if (!exists) {
     return res.status(404).json({ errorMessage: "Recording not found" });
@@ -210,7 +210,7 @@ app.get("/recordings/:recordingName", async (req, res) => {
 app.delete("/recordings/:recordingName", async (req, res) => {
   const { recordingName } = req.params;
   const key = RECORDINGS_PATH + recordingName;
-  const exists = await s3Service.exists(key);
+  const exists = await azureBlobService.exists(key);
 
   if (!exists) {
     return res.status(404).json({ errorMessage: "Recording not found" });
@@ -218,7 +218,7 @@ app.delete("/recordings/:recordingName", async (req, res) => {
 
   try {
     // Delete the recording file from S3
-    await Promise.all([s3Service.deleteObject(key)]);
+    await Promise.all([azureBlobService.deleteObject(key)]);
     res.json({ message: "Recording deleted" });
   } catch (error) {
     console.error("Error deleting recording.", error);
@@ -246,7 +246,7 @@ const getActiveRecordingByRoom = async (roomName) => {
 
 const getRecordingStream = async (recordingName, range) => {
   const key = RECORDINGS_PATH + recordingName;
-  const size = await s3Service.getObjectSize(key);
+  const size = await azureBlobService.getObjectSize(key);
 
   // Get the requested range
   const parts = range?.replace(/bytes=/, "").split("-");
@@ -256,6 +256,6 @@ const getRecordingStream = async (recordingName, range) => {
     : start + RECORDING_FILE_PORTION_SIZE;
   const end = Math.min(endRange, size - 1);
 
-  const stream = await s3Service.getObject(key, { start, end });
+  const stream = await azureBlobService.getObject(key, { start, end });
   return { stream, size, start, end };
 };
