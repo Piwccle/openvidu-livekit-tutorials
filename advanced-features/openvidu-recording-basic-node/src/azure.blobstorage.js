@@ -76,11 +76,9 @@ export class AzureBlobService {
         return response.readableStreamBody;
     }
 
-    async listObjects(prefix) {
+    async listObjects() {
         const result = [];
-        for await (const blob of this.containerClient.listBlobsFlat({
-            prefix,
-        })) {
+        for await (const blob of this.containerClient.listBlobsFlat()) {
             result.push(blob);
         }
         return result;

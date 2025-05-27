@@ -17,7 +17,6 @@ const SERVER_PORT = process.env.SERVER_PORT || 6080;
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || "devkey";
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || "secret";
 const LIVEKIT_URL = process.env.LIVEKIT_URL || "http://localhost:7880";
-const RECORDINGS_PATH = process.env.RECORDINGS_PATH ?? "recordings/";
 const RECORDING_FILE_PORTION_SIZE = 5 * 1024 * 1024; // 5MB
 
 const app = express();
@@ -152,14 +151,12 @@ app.post("/recordings/stop", async (req, res) => {
 app.get("/recordings", async (req, res) => {
   const roomId = req.query.roomId?.toString();
   try {
-    const awsResponse = await azureBlobService.listObjects(RECORDINGS_PATH);
+    const azureResponse = await azureBlobService.listObjects();
     let recordings = [];
-    if (awsResponse.Contents) {
-      recordings = awsResponse.Contents.map((recording) => {
-        return {
-          name: recording.Key.split("/").pop(),
-        };
-      });
+    if (azureResponse.length > 0) {
+      recordings = azureResponse.map((obj) => ({
+        name: obj.name,
+      }));
     }
     // Filter recordings by room ID
     recordings = recordings.filter((recording) =>
@@ -176,8 +173,7 @@ app.get("/recordings", async (req, res) => {
 app.get("/recordings/:recordingName", async (req, res) => {
   const { recordingName } = req.params;
   const { range } = req.headers;
-  const key = RECORDINGS_PATH + recordingName;
-  const exists = await azureBlobService.exists(key);
+  const exists = await azureBlobService.exists(recordingName);
 
   if (!exists) {
     return res.status(404).json({ errorMessage: "Recording not found" });
@@ -209,8 +205,7 @@ app.get("/recordings/:recordingName", async (req, res) => {
 // Delete a recording
 app.delete("/recordings/:recordingName", async (req, res) => {
   const { recordingName } = req.params;
-  const key = RECORDINGS_PATH + recordingName;
-  const exists = await azureBlobService.exists(key);
+  const exists = await azureBlobService.exists(recordingName);
 
   if (!exists) {
     return res.status(404).json({ errorMessage: "Recording not found" });
@@ -218,7 +213,7 @@ app.delete("/recordings/:recordingName", async (req, res) => {
 
   try {
     // Delete the recording file from S3
-    await Promise.all([azureBlobService.deleteObject(key)]);
+    await Promise.all([azureBlobService.deleteObject(recordingName)]);
     res.json({ message: "Recording deleted" });
   } catch (error) {
     console.error("Error deleting recording.", error);
@@ -245,8 +240,7 @@ const getActiveRecordingByRoom = async (roomName) => {
 };
 
 const getRecordingStream = async (recordingName, range) => {
-  const key = RECORDINGS_PATH + recordingName;
-  const size = await azureBlobService.getObjectSize(key);
+  const size = await azureBlobService.getObjectSize(recordingName);
 
   // Get the requested range
   const parts = range?.replace(/bytes=/, "").split("-");
@@ -256,6 +250,6 @@ const getRecordingStream = async (recordingName, range) => {
     : start + RECORDING_FILE_PORTION_SIZE;
   const end = Math.min(endRange, size - 1);
 
-  const stream = await azureBlobService.getObject(key, { start, end });
+  const stream = await azureBlobService.getObject(recordingName, { start, end });
   return { stream, size, start, end };
 };
